@@ -178,22 +178,32 @@ render(program) {
   return div;
 }
 
-      updateScores() {
-        const program = this.service.getProgram(this.currentProgram);
-        if (!program) return;
-        program.teams.forEach(team=>{
-          const el = document.getElementById(`score-${team.id}`);
-          if (!el) return;
-          const prev = this.scores[team.id] ?? 0;
-          if (prev !== team.score) {
-            this.popup(el, team.score - prev);
-            el.textContent = team.score;
-            el.classList.add('score-change');
-            setTimeout(()=>el.classList.remove('score-change'),600);
-            this.scores[team.id] = team.score;
-          }
-        });
-      }
+ updateScores() {
+  const program = this.service.getProgram(this.currentProgram);
+  if (!program) return;
+
+  let needReRender = false;
+
+  program.teams.forEach(team => {
+    const el = document.getElementById(`score-${team.id}`);
+    if (!el) return;
+
+    const prev = this.scores[team.id] ?? 0;
+    if (prev !== team.score) {
+      this.popup(el, team.score - prev);
+      el.textContent = team.score;
+      el.classList.add('score-change');
+      setTimeout(() => el.classList.remove('score-change'), 600);
+      this.scores[team.id] = team.score;
+      needReRender = true;  // 🔹 something changed
+    }
+  });
+
+  // 🔹 if any score changed, redraw cards (to refresh ranks)
+  if (needReRender) {
+    this.render(program);
+  }
+}
 
       popup(target, change) {
         const pop = document.createElement('div');
