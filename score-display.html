@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Score Display - Quiz Contest</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background: linear-gradient(135deg, #F2E6C3, #f4e5ba);
+    }
+
+    .score-change {
+      animation: pulseScore 0.6s ease-out;
+    }
+    @keyframes pulseScore {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.2); }
+      100% { transform: scale(1); }
+    }
+
+    .score-popup {
+      position: absolute;
+      font-size: 2rem;
+      font-weight: 700;
+      animation: floatUp 1.5s ease-out forwards;
+      pointer-events: none;
+    }
+    @keyframes floatUp {
+      0% { transform: translateY(0) scale(0.8); opacity: 0; }
+      30% { transform: translateY(-20px) scale(1.2); opacity: 1; }
+      100% { transform: translateY(-50px) scale(0.9); opacity: 0; }
+    }
+  </style>
+</head>
+<body class="flex flex-col min-h-screen text-white">
+  <!-- Header -->
+  <header class="bg-black/40 py-4 px-6 flex justify-between items-center">
+    <h1 class="text-2xl font-bold flex items-center">
+      <i class="fas fa-trophy mr-2 text-yellow-400"></i>
+      <span id="contestTitle">Quiz Contest</span>
+    </h1>
+    <div id="currentTime" class="text-lg"></div>
+  </header>
+
+  <!-- Main -->
+  <main class="flex-grow container mx-auto px-6 py-6">
+    <!-- Score Cards -->
+    <div id="scoreDisplaySection" class="grid gap-6 grid-cols-[repeat(auto-fit,minmax(550px,1fr))]"></div>
+
+    <!-- Empty State -->
+    <div id="noProgramMessage" class="flex flex-col items-center justify-center h-full">
+      <i class="fas fa-trophy text-9xl opacity-20 mb-6"></i>
+      <h2 class="text-2xl font-bold opacity-70">Waiting for quiz to start...</h2>
+      <p class="opacity-50 mt-2">Please select a program on the control device</p>
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="bg-black/40 text-center py-2 text-sm">
+    Quiz Score Management System
+  </footer>
+
+  <script>
+    // ---- Data Service ----
+    class DataService {
+      constructor() {
+        this.key = 'quizScoreData';
+        this.loadData();
+      }
+      loadData() {
+        const data = localStorage.getItem(this.key);
+        this.data = data ? JSON.parse(data) : { programs: {} };
+      }
+      getProgram(id) {
+        return this.data.programs[id] || null;
+      }
+      setupBroadcast(callback) {
+        this.channel = new BroadcastChannel('quizScoreChannel');
+        this.channel.onmessage = e => {
+          if (e.data.type === 'dataUpdate') {
+            this.data = e.data.data;
+            callback();
+          }
+        };
+      }
+    }
+
+    // ---- UI Controller ----
+    class UIController {
+      constructor(service) {
+        this.service = service;
+        this.currentProgram = null;
+        this.scores = {};
+        this.bindElements();
+        this.initClock();
+        this.initBroadcast();
+        this.loadFromURL();
+      }
+
+      bindElements() {
+        this.title = document.getElementById('contestTitle');
+        this.time = document.getElementById('currentTime');
+        this.section = document.getElementById('scoreDisplaySection');
+        this.empty = document.getElementById('noProgramMessage');
+      }
+
+      initClock() {
+        const format = new Intl.DateTimeFormat('en-US',{timeStyle:'medium'});
+        setInterval(() => this.time.textContent = format.format(new Date()), 1000);
+      }
+
+      initBroadcast() {
+        this.service.setupBroadcast(() => {
+          if (this.currentProgram) this.updateScores();
+        });
+      }
+
+      loadFromURL() {
+        const id = new URLSearchParams(location.search).get('program');
+        if (id) this.loadProgram(id);
+      }
+
+      loadProgram(id) {
+        const program = this.service.getProgram(id);
+        if (!program) return;
+        this.currentProgram = id;
+        this.title.textContent = program.name;
+        this.section.classList.remove('hidden');
+        this.empty.classList.add('hidden');
+        this.scores = {};
+        this.render(program);
+      }
+render(program) {
+  this.section.innerHTML = '';
+
+  // Get ranks separately by score
+  const ranked = [...program.teams].sort((a, b) => b.score - a.score);
+  const rankMap = {};
+  ranked.forEach((team, i) => {
+    rankMap[team.id] = i + 1; // store rank for each team
+  });
+
+  // Render in A-Z order
+  [...program.teams]
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .forEach(team => {
+      this.section.appendChild(this.card(team, rankMap[team.id]));
+    });
+}
+
+    card(team, rank) {
+  const div = document.createElement('div');
+  div.className = `relative rounded-xl p-5 text-center shadow-xl bg-red-800`;
+  div.id = `team-${team.id}`;
+
+  // Rank marker (small badge in corner)
+  let badge = '';
+  if (rank === 1) {
+    badge = `<span class="absolute top-2 right-2 bg-yellow-400 text-black text-xs px-2 py-1 rounded-full font-bold shadow">🥇 1st</span>`;
+  } else if (rank === 2) {
+    badge = `<span class="absolute top-2 right-2 bg-gray-300 text-black text-xs px-2 py-1 rounded-full font-bold shadow">🥈 2nd</span>`;
+  } else if (rank === 3) {
+    badge = `<span class="absolute top-2 right-2 bg-amber-700 text-white text-xs px-2 py-1 rounded-full font-bold shadow">🥉 3rd</span>`;
+  } else {
+    badge = `<span class="absolute top-2 right-2 bg-gray-600 text-white text-xs px-2 py-1 rounded-full">Rank ${rank}</span>`;
+  }
+
+  div.innerHTML = `
+    ${badge}
+    <div class="text-5xl font-bold">${team.id}</div>
+    <div class="text-lg opacity-80">${team.name}</div>
+    <div class="text-6xl font-extrabold mt-4" id="score-${team.id}">${team.score}</div>
+  `;
+  return div;
+}
+
+      updateScores() {
+        const program = this.service.getProgram(this.currentProgram);
+        if (!program) return;
+        program.teams.forEach(team=>{
+          const el = document.getElementById(`score-${team.id}`);
+          if (!el) return;
+          const prev = this.scores[team.id] ?? 0;
+          if (prev !== team.score) {
+            this.popup(el, team.score - prev);
+            el.textContent = team.score;
+            el.classList.add('score-change');
+            setTimeout(()=>el.classList.remove('score-change'),600);
+            this.scores[team.id] = team.score;
+          }
+        });
+      }
+
+      popup(target, change) {
+        const pop = document.createElement('div');
+        pop.className = `score-popup ${change>0?'text-green-400':'text-red-400'}`;
+        pop.textContent = `${change>0?'+':''}${change}`;
+        target.parentElement.appendChild(pop);
+        pop.style.left = "50%";
+        pop.style.transform = "translateX(-50%)";
+        setTimeout(()=>pop.remove(),1500);
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded',()=>{
+      new UIController(new DataService());
+    });
+  </script>
+</body>
+</html>
